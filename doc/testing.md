@@ -51,6 +51,10 @@ Before grading any new case, the tool reproduces verdicts already known to be tr
 | Q6 | Banned word present | graded FAIL by rule | _ |
 | Q7 | Compare run1 vs run2 | shows fail→pass diff | _ |
 | Q8 | Verify-the-verifier set | all known verdicts reproduced | ✅ (`npm run verify`) |
+| Q9 | Run with a rubric that has no machine rules | grades stored pending (`Needs review`) with an `llm_suggested` AI hint | _ |
+| Q10 | Confirm a pending grade in Results | verdict set, `decided_by` → `human` | _ |
+| Q11 | Save rubric with an invalid rule shape | rejected (400) | _ |
+| Q12 | Delete a golden case / run | row and its grades removed | _ |
 
 ### Security
 

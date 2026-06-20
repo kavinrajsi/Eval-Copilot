@@ -64,7 +64,7 @@ erDiagram
 | `exact_match` | `{ type }` | trimmed `actual` ≠ trimmed `known_good` |
 | `count_equals` | `{ type, token, value }` | occurrences of `token` ≠ `value` (case-insensitive) |
 
-Rules evaluate in order and the **first failure wins** (`decided_by: 'rule'`). When no machine rule applies, the case falls to a person; the AI is suggest-only (`decided_by: 'llm_suggested'`) and never sets the verdict.
+Rules evaluate in order and the **first failure wins** (`decided_by: 'rule'`). When a rubric has **no** machine rules, the run flow sends each case through the suggest-only AI (`suggestPossibleFailure`): the grade is stored **pending** (`grade.verdict` is `NULL`) with `decided_by: 'llm_suggested'` and a hint note. A person then confirms pass/fail in Results, which sets the verdict and flips `decided_by` to `'human'`. The AI never sets the verdict — `grade.verdict` is nullable precisely to hold this pending state.
 
 ## The Run-to-Run Comparison Keys
 

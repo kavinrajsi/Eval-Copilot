@@ -81,6 +81,54 @@ export function isMachineCheckable(rules = []) {
   return Array.isArray(rules) && rules.length > 0;
 }
 
+const RULE_TYPES = new Set([
+  "max_length",
+  "min_length",
+  "must_contain",
+  "must_not_contain",
+  "exact_match",
+  "count_equals",
+]);
+
+/**
+ * Validate the shape of stored rubric rules so bad rules are rejected on save
+ * rather than silently ignored at grading time. Returns the first problem.
+ *
+ * @returns {{ ok: true } | { ok: false, error: string }}
+ */
+export function validateRules(rules = []) {
+  if (!Array.isArray(rules)) return { ok: false, error: "rules must be an array" };
+
+  for (const [i, rule] of rules.entries()) {
+    const where = `rule ${i + 1}`;
+    if (!rule || typeof rule !== "object") {
+      return { ok: false, error: `${where}: must be an object` };
+    }
+    if (!RULE_TYPES.has(rule.type)) {
+      return { ok: false, error: `${where}: unknown type "${rule.type}"` };
+    }
+    if (rule.type === "max_length" || rule.type === "min_length") {
+      if (typeof rule.value !== "number" || Number.isNaN(rule.value)) {
+        return { ok: false, error: `${where}: ${rule.type} needs a numeric value` };
+      }
+    }
+    if (rule.type === "must_contain" || rule.type === "must_not_contain") {
+      if (typeof rule.value !== "string" || !rule.value.length) {
+        return { ok: false, error: `${where}: ${rule.type} needs a non-empty value` };
+      }
+    }
+    if (rule.type === "count_equals") {
+      if (typeof rule.token !== "string" || !rule.token.length) {
+        return { ok: false, error: `${where}: count_equals needs a token` };
+      }
+      if (typeof rule.value !== "number" || Number.isNaN(rule.value)) {
+        return { ok: false, error: `${where}: count_equals needs a numeric value` };
+      }
+    }
+  }
+  return { ok: true };
+}
+
 /**
  * AI assist — SUGGEST ONLY. Never sets the final verdict.
  *

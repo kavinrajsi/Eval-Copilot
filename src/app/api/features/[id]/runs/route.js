@@ -1,5 +1,9 @@
 import { badRequest, ok, requireUser } from "@/lib/api";
-import { gradeByRule } from "@/lib/grading";
+import {
+  gradeByRule,
+  isMachineCheckable,
+  suggestPossibleFailure,
+} from "@/lib/grading";
 
 // GET /api/features/:id/runs — list runs for this feature (newest first)
 export async function GET(_request, { params }) {
@@ -57,18 +61,27 @@ export async function POST(request, { params }) {
     .single();
   if (runErr) return badRequest(runErr.message);
 
-  // Grade each output by rule. The verdict is the rule's — never the AI's.
-  const gradeRows = outputs.map((o) => {
-    const result = gradeByRule(o.actual_output, knownGoodById.get(o.golden_case_id), rules);
-    return {
-      run_id: run.id,
-      golden_case_id: o.golden_case_id,
-      actual_output: o.actual_output ?? "",
-      verdict: result.verdict,
-      decided_by: result.decided_by,
-      note: result.note ?? null,
-    };
-  });
+  // Move 3 boundary: when the rubric has machine rules, a rule decides
+  // (decided_by 'rule'). When it has none, the case is fuzzy — the AI only
+  // SUGGESTS (decided_by 'llm_suggested', verdict null = pending) and a human
+  // confirms pass/fail later via the override. The AI never sets the verdict.
+  const machine = isMachineCheckable(rules);
+  const gradeRows = await Promise.all(
+    outputs.map(async (o) => {
+      const knownGood = knownGoodById.get(o.golden_case_id);
+      const result = machine
+        ? gradeByRule(o.actual_output, knownGood, rules)
+        : await suggestPossibleFailure(o.actual_output, knownGood);
+      return {
+        run_id: run.id,
+        golden_case_id: o.golden_case_id,
+        actual_output: o.actual_output ?? "",
+        verdict: result.verdict ?? null,
+        decided_by: result.decided_by,
+        note: result.note ?? null,
+      };
+    }),
+  );
 
   const { data: grades, error: gradeErr } = await supabase
     .from("grade")
@@ -77,10 +90,16 @@ export async function POST(request, { params }) {
   if (gradeErr) return badRequest(gradeErr.message);
 
   const pass = grades.filter((g) => g.verdict === "pass").length;
+  const fail = grades.filter((g) => g.verdict === "fail").length;
   return ok(
     {
       run_id: run.id,
-      summary: { pass, fail: grades.length - pass, total: grades.length },
+      summary: {
+        pass,
+        fail,
+        pending: grades.length - pass - fail,
+        total: grades.length,
+      },
       grades,
     },
     201,

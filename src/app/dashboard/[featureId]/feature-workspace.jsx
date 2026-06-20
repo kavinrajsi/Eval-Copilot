@@ -9,6 +9,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  NativeSelect,
+  NativeSelectOption,
+} from "@/components/ui/native-select";
+import { isMachineCheckable } from "@/lib/grading";
+import {
   Table,
   TableBody,
   TableCell,
@@ -40,7 +45,8 @@ const RULE_TYPES = [
 ];
 
 function Verdict({ value }) {
-  if (!value) return <span className="text-muted-foreground">—</span>;
+  // A null/empty verdict means pending — the AI suggested, a human must confirm.
+  if (!value) return <Badge variant="outline">Needs review</Badge>;
   return (
     <Badge variant={value === "pass" ? "secondary" : "destructive"}>
       {value.toUpperCase()}
@@ -93,7 +99,7 @@ export default function FeatureWorkspace({ featureId }) {
         <Rubric key={rubric?.id ?? "new"} base={base} rubric={rubric} onChange={loadAll} />
       </TabsContent>
       <TabsContent value="run">
-        <RunPanel base={base} cases={cases} onRun={loadAll} />
+        <RunPanel base={base} cases={cases} rubric={rubric} onRun={loadAll} />
       </TabsContent>
       <TabsContent value="results">
         <Results runs={runs} onChange={loadAll} />
@@ -131,6 +137,15 @@ function GoldenSet({ base, cases, onChange }) {
     }
   }
 
+  async function remove(caseId) {
+    try {
+      await jsonFetch(`${base}/golden-cases/${caseId}`, { method: "DELETE" });
+      onChange();
+    } catch (err) {
+      toast.error(`Couldn't delete case: ${err.message}`);
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -160,6 +175,7 @@ function GoldenSet({ base, cases, onChange }) {
               <TableRow>
                 <TableHead>Input</TableHead>
                 <TableHead>Known-good</TableHead>
+                <TableHead className="w-0 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -167,6 +183,16 @@ function GoldenSet({ base, cases, onChange }) {
                 <TableRow key={c.id}>
                   <TableCell className="align-top">{c.input}</TableCell>
                   <TableCell className="align-top">{c.known_good}</TableCell>
+                  <TableCell className="align-top text-right">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => remove(c.id)}
+                    >
+                      Delete
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -242,17 +268,16 @@ function Rubric({ base, rubric, onChange }) {
         <div className="grid gap-3">
           <Label>Machine rules</Label>
           <div className="flex flex-wrap items-end gap-2">
-            <select
+            <NativeSelect
               value={type}
               onChange={(e) => setType(e.target.value)}
-              className="border-input bg-background h-9 rounded-md border px-3 text-sm"
             >
               {RULE_TYPES.map((t) => (
-                <option key={t} value={t}>
+                <NativeSelectOption key={t} value={t}>
                   {t}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
+            </NativeSelect>
             {type === "count_equals" ? (
               <Input
                 placeholder="token (e.g. stone)"
@@ -307,11 +332,13 @@ function Rubric({ base, rubric, onChange }) {
 
 // --- Run ------------------------------------------------------------------
 
-function RunPanel({ base, cases, onRun }) {
+function RunPanel({ base, cases, rubric, onRun }) {
   const [label, setLabel] = useState("");
   const [outputs, setOutputs] = useState({});
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
+
+  const machine = isMachineCheckable(rubric?.rules ?? []);
 
   async function run(e) {
     e.preventDefault();
@@ -355,6 +382,12 @@ function RunPanel({ base, cases, onRun }) {
         <CardDescription>Paste the feature&apos;s actual output for each case, then grade.</CardDescription>
       </CardHeader>
       <CardContent>
+        {!machine ? (
+          <p className="text-muted-foreground mb-4 rounded-md border border-dashed px-3 py-2 text-sm">
+            This rubric has no machine rules — the AI will suggest a possible
+            failure for each case and a human confirms pass/fail in Results.
+          </p>
+        ) : null}
         <form onSubmit={run} className="grid gap-4">
           <div className="grid gap-2">
             <Label>Run label</Label>
@@ -382,7 +415,11 @@ function RunPanel({ base, cases, onRun }) {
         {result?.summary ? (
           <div className="mt-6 grid gap-2">
             <p className="text-sm font-medium">
-              {result.summary.pass} pass / {result.summary.fail} fail of {result.summary.total}
+              {result.summary.pass} pass / {result.summary.fail} fail
+              {result.summary.pending
+                ? ` / ${result.summary.pending} needs review`
+                : ""}{" "}
+              of {result.summary.total}
             </p>
             <Table>
               <TableHeader>
@@ -411,7 +448,7 @@ function RunPanel({ base, cases, onRun }) {
 
 // --- Results --------------------------------------------------------------
 
-function Results({ runs }) {
+function Results({ runs, onChange }) {
   const [runId, setRunId] = useState("");
   const [grades, setGrades] = useState([]);
 
@@ -421,6 +458,18 @@ function Results({ runs }) {
       .then((b) => setGrades(b.grades ?? []))
       .catch((e) => toast.error(`Couldn't load grades: ${e.message}`));
   }, [runId]);
+
+  async function deleteRun() {
+    if (!runId) return;
+    try {
+      await jsonFetch(`/api/runs/${runId}`, { method: "DELETE" });
+      setRunId("");
+      setGrades([]);
+      onChange?.();
+    } catch (e) {
+      toast.error(`Couldn't delete run: ${e.message}`);
+    }
+  }
 
   async function override(id, verdict) {
     try {
@@ -444,18 +493,25 @@ function Results({ runs }) {
         <CardDescription>Per-case verdicts. A human can override the fuzzy ones.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
-        <select
-          value={runId}
-          onChange={(e) => setRunId(e.target.value)}
-          className="border-input bg-background h-9 w-full max-w-sm rounded-md border px-3 text-sm"
-        >
-          <option value="">Pick a run…</option>
-          {runs.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.label || r.id.slice(0, 8)}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <NativeSelect
+            value={runId}
+            onChange={(e) => setRunId(e.target.value)}
+            className="w-full max-w-sm"
+          >
+            <NativeSelectOption value="">Pick a run…</NativeSelectOption>
+            {runs.map((r) => (
+              <NativeSelectOption key={r.id} value={r.id}>
+                {r.label || r.id.slice(0, 8)}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+          {runId ? (
+            <Button variant="ghost" size="sm" onClick={deleteRun}>
+              Delete run
+            </Button>
+          ) : null}
+        </div>
 
         {grades.length ? (
           <Table>
@@ -568,18 +624,14 @@ function RunSelect({ label, runs, value, onChange }) {
   return (
     <div className="grid gap-1">
       <Label className="text-xs">{label}</Label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="border-input bg-background h-9 rounded-md border px-3 text-sm"
-      >
-        <option value="">Pick…</option>
+      <NativeSelect value={value} onChange={(e) => onChange(e.target.value)}>
+        <NativeSelectOption value="">Pick…</NativeSelectOption>
         {runs.map((r) => (
-          <option key={r.id} value={r.id}>
+          <NativeSelectOption key={r.id} value={r.id}>
             {r.label || r.id.slice(0, 8)}
-          </option>
+          </NativeSelectOption>
         ))}
-      </select>
+      </NativeSelect>
     </div>
   );
 }

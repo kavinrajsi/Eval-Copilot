@@ -1,4 +1,5 @@
 import { badRequest, ok, requireUser } from "@/lib/api";
+import { validateRules } from "@/lib/grading";
 
 // GET /api/features/:id/rubric — the latest rubric for this feature
 export async function GET(_request, { params }) {
@@ -29,6 +30,8 @@ export async function POST(request, { params }) {
   if (!rule_text) return badRequest("rule_text is required");
 
   const rules = Array.isArray(body.rules) ? body.rules : [];
+  const check = validateRules(rules);
+  if (!check.ok) return badRequest(check.error);
 
   const { data, error } = await auth.supabase
     .from("rubric")
