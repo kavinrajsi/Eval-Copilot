@@ -722,15 +722,29 @@ function Compare({ base, runs }) {
 
 // --- Quick test -----------------------------------------------------------
 
-// Grade arbitrary content against the rubric without creating a run or needing
-// a golden case. Nothing is saved — it's a throwaway brand/rule check.
+// Grade arbitrary content against the rubric without a run or golden case. Each
+// test is saved to a per-feature history (the quick_test table).
 function QuickTest({ base, rubric }) {
   const [content, setContent] = useState("");
   const [image, setImage] = useState(null); // { data, media_type, name }
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState(null);
+  const [history, setHistory] = useState([]);
 
   const machine = isMachineCheckable(rubric?.rules ?? []);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const b = await jsonFetch(`${base}/quick-test`);
+      setHistory(b.quick_tests ?? []);
+    } catch (e) {
+      toast.error(`Couldn't load quick tests: ${e.message}`);
+    }
+  }, [base]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadHistory();
+  }, [loadHistory]);
 
   function onPickImage(e) {
     const file = e.target.files?.[0];
@@ -748,17 +762,27 @@ function QuickTest({ base, rubric }) {
     try {
       const payload = { content };
       if (image) payload.image = { data: image.data, media_type: image.media_type };
-      const body = await jsonFetch(`${base}/quick-test`, {
+      await jsonFetch(`${base}/quick-test`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      setResult(body.result);
+      setContent("");
       setImage(null);
+      await loadHistory();
     } catch (err) {
       toast.error(`Test failed: ${err.message}`);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function remove(testId) {
+    try {
+      await jsonFetch(`${base}/quick-test?id=${testId}`, { method: "DELETE" });
+      await loadHistory();
+    } catch (err) {
+      toast.error(`Couldn't delete: ${err.message}`);
     }
   }
 
@@ -777,7 +801,8 @@ function QuickTest({ base, rubric }) {
       <CardHeader>
         <CardTitle>Quick test</CardTitle>
         <CardDescription>
-          Paste any content to grade it against this rubric — nothing is saved.
+          Grade any content or image against this rubric — no golden case needed.
+          Each test is saved to the history below.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
@@ -821,15 +846,36 @@ function QuickTest({ base, rubric }) {
           </Button>
         </form>
 
-        {result ? (
-          <div className="grid gap-2 rounded-md border p-4">
-            <div className="flex items-center gap-2">
-              <Verdict value={result.verdict} />
-              <span className="text-muted-foreground text-xs">{result.decided_by}</span>
-            </div>
-            <p className="text-sm">{result.note ?? "No issue spotted by the machine rules."}</p>
-          </div>
-        ) : null}
+        {history.length ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Tested</TableHead>
+                <TableHead>Verdict</TableHead>
+                <TableHead>By</TableHead>
+                <TableHead>Note</TableHead>
+                <TableHead className="w-0 text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {history.map((t) => (
+                <TableRow key={t.id}>
+                  <TableCell className="max-w-[14rem] align-top text-xs">{t.content}</TableCell>
+                  <TableCell className="align-top"><Verdict value={t.verdict} /></TableCell>
+                  <TableCell className="text-muted-foreground align-top text-xs">{t.decided_by}</TableCell>
+                  <TableCell className="align-top text-sm">{t.note ?? "—"}</TableCell>
+                  <TableCell className="align-top text-right">
+                    <Button type="button" variant="ghost" size="sm" onClick={() => remove(t.id)}>
+                      Delete
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : (
+          <p className="text-muted-foreground text-sm">No quick tests yet.</p>
+        )}
       </CardContent>
     </Card>
   );
