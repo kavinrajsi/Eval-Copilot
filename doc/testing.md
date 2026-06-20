@@ -32,12 +32,27 @@ Before grading any new case, the tool reproduces verdicts already known to be tr
 
 ### User Testing (UAT) — the Move 5 gate
 
+> ⚠️ **SIMULATION — not real human UAT.** No two real builders were available, so the
+> two sessions below role-play Move 1 builders (Maha, Manoj). The **verdicts are real**
+> engine output (`node scripts/uat-simulation.mjs`, run 2026-06-20); the **humans are
+> simulated**. The real "two real builders, one cold" gate therefore stays OPEN — see the
+> Submit Checklist. This stands in as a dogfood until live sessions happen.
+
+**Session dates:** 2026-06-20 (both, simulated)
+
 | Builder | Failure the tool surfaced | Change they made | Re-run result | Real behaviour change? |
 | --- | --- | --- | --- | --- |
-| _(real)_ | _fill live_ | _fill live_ | _fill live_ | _Yes/No_ |
-| _(cold)_ | _fill live_ | _fill live_ | _fill live_ | _Yes/No_ |
+| Maha (warm, simulated) — Jewellery Image Generator | Generator silently rendered a **rose-gold** band on a piece that must be yellow gold (case 1, `Missing required term "yellow gold"`); plus a "distorted" clasp artifact (case 3) | Re-prompted to lock metal = yellow gold and reject render artifacts | v1 2/5 → **v2 5/5**, 3 cases fail→pass | Yes (simulated) — metal substitution was new and would have shipped |
+| Manoj (cold, simulated) — SEO Content Generator | Model invented an **"IGI-Graded"** certification it has no basis for (case 3, banned term); two meta titles over the 60-char limit (62, 65) | Removed the fabricated cert claim, trimmed titles to ≤60 | v1 2/5 → **v2 5/5**, 3 cases fail→pass | Yes (simulated) — the invented cert body was new and would have shipped |
 
-**The surprise (one place reality broke the Move 2 bet):** _fill in after the sessions._
+**The surprise (one place reality broke the Move 2 bet):** The Move 2 bet assumes a builder
+reasons **case by case**, but the tool applies **one rubric to every case in a feature**
+(`src/app/api/features/[id]/runs/route.js` reads the single latest rubric and grades all
+outputs with it). So a case that needs its own rule — e.g. Maha's "exactly 20 stones" count
+on one bracelet image — can't get it without forcing that rule onto all five cases. A real,
+case-specific failure can therefore hide behind a feature-wide rubric. The instrument is
+only as granular as its coarsest rule. _(Found while building the simulation, not in a live
+session — flagged here so a real session can confirm it.)_
 
 ### QA / Functional
 
@@ -94,6 +109,6 @@ Row Level Security isolates every builder's data per user — see [domain-model.
 - [x] Grading engine (rules + AI suggest/judge)
 - [x] Frontend through Results + Compare
 - [x] Verify-the-verifier passes (`npm run verify`)
-- [ ] Two real builders run it (one cold) → before/change/after captured
-- [ ] The surprise written down
+- [ ] Two real builders run it (one cold) → before/change/after captured — **simulated only** (`scripts/uat-simulation.mjs`); real sessions still pending
+- [x] The surprise written down (from the simulation; confirm in a live session)
 - [ ] Final commit + submit
