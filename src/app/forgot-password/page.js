@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 
-import { authenticate } from "./actions";
+import { requestPasswordReset } from "./actions";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,16 +16,19 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export default function LoginPage() {
-  const [state, formAction, pending] = useActionState(authenticate, null);
+export default function ForgotPasswordPage() {
+  const [state, formAction, pending] = useActionState(
+    requestPasswordReset,
+    null,
+  );
 
   return (
     <div className="flex min-h-svh items-center justify-center p-6">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Welcome back</CardTitle>
+          <CardTitle>Reset your password</CardTitle>
           <CardDescription>
-            Sign in to your account or create a new one.
+            Enter your email and we&apos;ll send you a reset link.
           </CardDescription>
         </CardHeader>
         <form action={formAction}>
@@ -51,42 +54,16 @@ export default function LoginPage() {
                 required
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-              />
-            </div>
           </CardContent>
           <CardFooter className="mt-6 flex-col gap-2">
-            <Button
-              type="submit"
-              name="intent"
-              value="login"
-              className="w-full"
-              disabled={pending}
-            >
-              {pending ? "Please wait…" : "Sign in"}
-            </Button>
-            <Button
-              type="submit"
-              name="intent"
-              value="signup"
-              variant="outline"
-              className="w-full"
-              disabled={pending}
-            >
-              Create account
+            <Button type="submit" className="w-full" disabled={pending}>
+              {pending ? "Sending…" : "Send reset link"}
             </Button>
             <a
-              href="/forgot-password"
+              href="/login"
               className="text-muted-foreground hover:text-foreground mt-2 text-sm underline-offset-4 hover:underline"
             >
-              Forgot your password?
+              Back to sign in
             </a>
           </CardFooter>
         </form>

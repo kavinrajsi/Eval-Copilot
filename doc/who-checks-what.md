@@ -19,7 +19,7 @@ The two sides are not equal. **Let the computer do it wherever it can**, because
 
 ## Where Each Move 1 Failure Sits
 
-This line is not made up — it comes straight from the real failures in [Move 1](./doc/summary.md):
+This line is not made up — it comes straight from the real failures in [Move 1](./summary.md):
 
 | Move 1 failure | Who checks it | Why |
 | --- | --- | --- |
@@ -51,7 +51,7 @@ What keeps this honest is the project's core rule — **check the checker**:
 
 > Before a fuzzy check is trusted on a new case, it first has to fail the answers we **already know are bad** and pass the ones we **already know are fine**.
 
-So the person's-side error is fenced in by a warm-up test, not left wide open. I would rather have a grader that is *exact where it can be and honest about being unsure where it can't*, than one that fakes certainty about taste and ships a wrong "pass" — the single most dangerous thing [Move 1](./doc/summary.md) turned up.
+So the person's-side error is fenced in by a warm-up test, not left wide open. I would rather have a grader that is *exact where it can be and honest about being unsure where it can't*, than one that fakes certainty about taste and ships a wrong "pass" — the single most dangerous thing [Move 1](./summary.md) turned up.
 
 ## Deliverable Check
 

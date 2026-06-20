@@ -23,6 +23,7 @@ Before grading any new case, the tool reproduces verdicts already known to be tr
 | Maha #1 (correct solitaire) | PASS | pass |
 | Maha #2 (17 stones, not 20) | FAIL | fail (count 17 ≠ 20) |
 | Manoj #1 (62-char meta title) | FAIL | fail (over 60) |
+| Manoj #1b (40-char known-good title) | PASS | pass |
 | Manoj #5 (invented "IGI-Graded") | FAIL | fail (banned term) |
 
 ✅ Passing today. If it can't get these right, it can't be trusted on unseen cases.

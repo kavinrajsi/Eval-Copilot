@@ -30,9 +30,10 @@ export async function updateSession(request) {
   // debug issues with users being randomly logged out.
 
   // IMPORTANT: DO NOT REMOVE auth.getClaims()
-  const {
-    data: { claims },
-  } = await supabase.auth.getClaims();
+  // getClaims() returns { data: null } when there is no authenticated session,
+  // so read claims defensively rather than destructuring data directly.
+  const { data } = await supabase.auth.getClaims();
+  const claims = data?.claims;
 
   const { pathname } = request.nextUrl;
 

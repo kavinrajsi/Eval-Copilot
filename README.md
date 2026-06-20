@@ -49,7 +49,7 @@ Track B walks the shared five-move spine. Each move ends in a deliverable.
 | **2. Write down your bet, before you build**                       | Claim + 3 numbers + kill-number, as your first timestamped commit.                                                                                 | The timestamped hypothesis. → [doc/hypothesis.md](./doc/hypothesis.md)                       |
 | **3. Decide what the computer checks, and what only a person can** | Draw the line between what a simple rule can check and what needs judgement; mark who makes the final call.                                        | The diagram + the failure you accepted. → [doc/who-checks-what.md](./doc/who-checks-what.md) |
 | **4. Draw the domain model**                                       | Hand-draw the schema (feature → golden cases → rubric → run → grade), mark the run-to-run comparison keys, add row-level security. | Schema + ownership walls. → [doc/domain-model.md](./doc/domain-model.md)                 |
-| **5. Put it in front of two people, report what really happened**  | Two builders run their own feature through the tool (one cold); capture before-run → change → after-run.                                           | Before/after evidence + the surprise. → [doc/move-5-testing.md](./doc/move-5-testing.md)     |
+| **5. Put it in front of two people, report what really happened**  | Two builders run their own feature through the tool (one cold); capture before-run → change → after-run.                                           | Before/after evidence + the surprise. → [doc/testing.md](./doc/testing.md)     |
 
 > **Who verifies the verifier?** The builder does — against cases they already have a verdict on. Before the rubric is trusted on an unseen case, it must flag the outputs already known to be bad and pass the ones already known to be fine.
 
@@ -66,18 +66,23 @@ What's built today:
 
 ### Routes
 
-| Route        | Type    | Description                                                        |
-| ------------ | ------- | ------------------------------------------------------------------ |
-| `/`          | Static  | Starter home page                                                  |
-| `/login`     | Static  | Email/password sign-in and sign-up card                            |
-| `/dashboard` | Dynamic | Protected — shows the signed-in user's email and ID, plus sign-out |
+| Route              | Type    | Description                                                        |
+| ------------------ | ------- | ------------------------------------------------------------------ |
+| `/`                | Static  | Starter home page                                                  |
+| `/login`           | Static  | Email/password sign-in and sign-up card                            |
+| `/forgot-password` | Static  | Request a password reset link by email                            |
+| `/reset-password`  | Static  | Set a new password (reached via the emailed reset link)           |
+| `/auth/callback`   | Dynamic | Exchanges the email link's code for a session, then redirects     |
+| `/dashboard`       | Dynamic | Protected — shows the signed-in user's email and ID, plus sign-out |
 
 ### Auth flow
 
 1. The `/login` form posts to the `authenticate` **Server Action** (`src/app/login/actions.js`), which calls `supabase.auth.signInWithPassword()` or `supabase.auth.signUp()` based on which button was pressed. Errors and "check your email" states render inline.
 2. On success the session is written to secure cookies and the user is redirected to `/dashboard`.
-3. `src/middleware.js` runs `updateSession()` on every matched request: it refreshes claims and enforces the redirect rules above.
+3. `src/proxy.js` runs `updateSession()` on every matched request: it refreshes claims and enforces the redirect rules above.
 4. `signout()` clears the session and returns to `/login`.
+
+**Password recovery:** `/forgot-password` posts to `requestPasswordReset` (`src/app/forgot-password/actions.js`), which calls `supabase.auth.resetPasswordForEmail()` with a `redirectTo` of `${NEXT_PUBLIC_SITE_URL}/auth/callback?next=/reset-password`. The emailed link lands on `/auth/callback`, which calls `exchangeCodeForSession()` to establish a recovery session, then forwards to `/reset-password`. There the `updatePassword` action calls `supabase.auth.updateUser({ password })` and redirects to `/dashboard`. The reset link's redirect URL must be added to **Supabase → Authentication → URL Configuration → Redirect URLs**.
 
 > **Security note:** authorization decisions read the verified JWT `claims` from `getClaims()` — never `user_metadata`, which is user-editable. The publishable key is browser-safe by design, which is why it carries the `NEXT_PUBLIC_` prefix.
 
@@ -114,9 +119,10 @@ Create a `.env.local` in the repo root (it is gitignored):
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://<your-project-ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<your-publishable-key>
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
 
-Both values come from your Supabase dashboard → **Project Settings → API**. Use the **publishable** key (not the secret/service-role key).
+The two Supabase values come from your dashboard → **Project Settings → API**. Use the **publishable** key (not the secret/service-role key). `NEXT_PUBLIC_SITE_URL` is the app's public origin — it builds the password-reset link's redirect target (set it to your deployed URL in production). Add `<NEXT_PUBLIC_SITE_URL>/auth/callback` to **Authentication → URL Configuration → Redirect URLs** so the reset link is accepted.
 
 > If email confirmation is enabled in **Authentication → Providers → Email**, a new sign-up won't get a session until the user confirms via email — the login form will show "Check your email to confirm your account." Disable it for faster local testing.
 
@@ -148,7 +154,7 @@ Visit `http://localhost:3000/dashboard` → you'll be redirected to `/login`. Cr
 │   ├── hypothesis.md             Move 2 — the timestamped bet
 │   ├── who-checks-what.md        Move 3 — computer checks vs. human judgement
 │   ├── domain-model.md           Move 4 — schema, comparison keys, ownership walls
-│   ├── move-5-testing.md         Move 5 — build, test matrices, dummy example
+│   ├── testing.md                Move 5 — build, test matrices, dummy example
 │   ├── summary.md                Executive summary across all evaluations
 │   └── user-1.md … user-4.md     Move 1 — per-builder eval records
 ├── scripts/
@@ -160,13 +166,16 @@ Visit `http://localhost:3000/dashboard` → you'll be redirected to `/login`. Cr
     │   ├── page.js               Home page
     │   ├── globals.css           Tailwind v4 import + theme tokens (light/dark)
     │   ├── login/                Sign-in / sign-up form + server actions
+    │   ├── forgot-password/      Request a reset link + server action
+    │   ├── reset-password/       Set a new password + server action
+    │   ├── auth/callback/        Code-for-session exchange (route handler)
     │   ├── dashboard/
     │   │   ├── page.js           My Features (list + create)
     │   │   ├── new-feature-form.jsx
     │   │   └── [featureId]/      Golden Set / Rubric / Run / Results / Compare
     │   └── api/                  Route handlers: features, golden-cases,
     │       │                       rubric, runs, grades, compare
-    ├── middleware.js             Session refresh + route guards
+    ├── proxy.js                  Session refresh + route guards
     ├── components/ui/            55 shadcn/ui components
     ├── hooks/use-mobile.js
     └── lib/

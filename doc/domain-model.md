@@ -51,6 +51,21 @@ erDiagram
     }
 ```
 
+## The Rubric Rule Vocabulary
+
+`rubric.rules` is a jsonb array of machine-checkable rule objects. The grading engine (`src/lib/grading.js`) supports six types:
+
+| Type | Shape | Fails when |
+| --- | --- | --- |
+| `max_length` | `{ type, value }` | `actual.length > value` |
+| `min_length` | `{ type, value }` | `actual.length < value` |
+| `must_contain` | `{ type, value }` | `value` is absent (case-insensitive substring) |
+| `must_not_contain` | `{ type, value }` | `value` is present (case-insensitive substring) |
+| `exact_match` | `{ type }` | trimmed `actual` ≠ trimmed `known_good` |
+| `count_equals` | `{ type, token, value }` | occurrences of `token` ≠ `value` (case-insensitive) |
+
+Rules evaluate in order and the **first failure wins** (`decided_by: 'rule'`). When no machine rule applies, the case falls to a person; the AI is suggest-only (`decided_by: 'llm_suggested'`) and never sets the verdict.
+
 ## The Run-to-Run Comparison Keys
 
 The point of the tool is to answer "did my fix help, or break something else?" That needs two runs lined up case-by-case. The keys that make that join exact:
