@@ -2,6 +2,7 @@ import { badRequest, ok, requireUser } from "@/lib/api";
 import {
   gradeByRule,
   isMachineCheckable,
+  judgeByLLM,
   suggestPossibleFailure,
 } from "@/lib/grading";
 
@@ -33,15 +34,17 @@ export async function POST(request, { params }) {
   const outputs = Array.isArray(body.outputs) ? body.outputs : [];
   if (!outputs.length) return badRequest("outputs is required");
 
-  // Latest rubric supplies the machine rules.
+  // Latest rubric supplies the machine rules, plain-English text, and grader mode.
   const { data: rubric } = await supabase
     .from("rubric")
-    .select("rules")
+    .select("rule_text, rules, grader_mode")
     .eq("feature_id", id)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
   const rules = rubric?.rules ?? [];
+  const ruleText = rubric?.rule_text ?? "";
+  const graderMode = rubric?.grader_mode ?? "suggest";
 
   // Known-good answers for the cases being graded.
   const caseIds = outputs.map((o) => o.golden_case_id);

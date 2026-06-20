@@ -157,7 +157,37 @@ export async function suggestPossibleFailure(actual, knownGood) {
     }
   }
 
-  // Heuristic fallback (no key required).
+  return heuristicSuggest(text, good);
+}
+
+/**
+ * LLM-as-judge — SCORES pass/fail against the rubric. Unlike the suggest-only
+ * path, this sets a verdict (decided_by 'llm_judge'); a human can still override.
+ *
+ * Falls back to the suggest-only path when no provider is configured or the
+ * model call/parse fails, so a fuzzy case is never given a fabricated verdict.
+ *
+ * @returns {Promise<{verdict?: 'pass'|'fail', decided_by: string, note: string}>}
+ */
+export async function judgeByLLM(actual, knownGood, ruleText) {
+  const text = String(actual ?? "");
+  const good = String(knownGood ?? "");
+
+  if (process.env.ANTHROPIC_API_KEY) {
+    try {
+      const { judgeViaClaude } = await import("./grading-claude.js");
+      return await judgeViaClaude(text, good, ruleText);
+    } catch (err) {
+      console.error("Claude judge failed; falling back to suggest:", err?.message);
+    }
+  }
+
+  // No key (or error) — degrade to a suggest-only hint with no verdict.
+  return heuristicSuggest(text, good);
+}
+
+// Deterministic suggest-only hint (no key required, no verdict).
+function heuristicSuggest(text, good) {
   const hints = [];
   if (good && text && lengthRatio(text, good) > 1.5) {
     hints.push("Output is noticeably longer than the known-good — check for padding or repetition.");

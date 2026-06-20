@@ -50,3 +50,60 @@ export async function suggestViaClaude(actual, knownGood) {
     .join("")
     .trim();
 }
+
+const JUDGE_SYSTEM = `You are an evaluation judge scoring one AI feature output.
+
+Grade the ACTUAL output strictly against the RUBRIC, using the KNOWN-GOOD answer as the reference the team committed to in advance. Decide a single verdict — "pass" or "fail" — based only on what the rubric requires. When the rubric is silent, lean on whether the actual output is materially as good as the known-good.
+
+You are an automated first-pass grader; a human may override your verdict, so be precise and honest rather than lenient. Give a confidence level and a one-sentence rationale grounded in the two texts.`;
+
+const JUDGE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    verdict: { type: "string", enum: ["pass", "fail"] },
+    confidence: { type: "string", enum: ["low", "medium", "high"] },
+    rationale: { type: "string" },
+  },
+  required: ["verdict", "confidence", "rationale"],
+};
+
+/**
+ * LLM-as-judge: score one output pass/fail against the rubric. Returns a graded
+ * result (the verdict IS set here). Throws on provider/parse errors so the
+ * caller can fall back to suggest-only.
+ *
+ * @returns {Promise<{verdict: 'pass'|'fail', decided_by: 'llm_judge', note: string}>}
+ */
+export async function judgeViaClaude(actual, knownGood, ruleText) {
+  const client = new Anthropic();
+
+  const response = await client.messages.create({
+    model: MODEL,
+    max_tokens: 512,
+    system: JUDGE_SYSTEM,
+    output_config: { format: { type: "json_schema", schema: JUDGE_SCHEMA } },
+    messages: [
+      {
+        role: "user",
+        content: `RUBRIC:\n${ruleText || "(none provided)"}\n\nKNOWN-GOOD answer:\n${knownGood || "(none provided)"}\n\nACTUAL output:\n${actual || "(empty)"}\n\nScore the actual output pass or fail against the rubric.`,
+      },
+    ],
+  });
+
+  const text = response.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("");
+
+  const parsed = JSON.parse(text); // throws on malformed output → caller falls back
+  const verdict = parsed.verdict === "pass" ? "pass" : "fail";
+  const confidence = parsed.confidence ?? "low";
+  const rationale = (parsed.rationale ?? "").trim();
+
+  return {
+    verdict,
+    decided_by: "llm_judge",
+    note: `[${confidence} confidence] ${rationale}`.trim(),
+  };
+}
