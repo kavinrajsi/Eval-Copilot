@@ -186,6 +186,47 @@ export async function judgeByLLM(actual, knownGood, ruleText) {
   return heuristicSuggest(text, good);
 }
 
+/**
+ * Vision suggest — flag possible problems in an image (no verdict). Machine
+ * rules can't see pixels, so an image always goes to the model. Falls back to a
+ * human-review note when no provider is configured (a heuristic can't see it).
+ *
+ * @returns {Promise<{decided_by: string, note: string}>}
+ */
+export async function suggestImageFailure(imageBase64, mediaType, ruleText) {
+  if (process.env.ANTHROPIC_API_KEY) {
+    try {
+      const { suggestImageViaClaude } = await import("./grading-claude.js");
+      return await suggestImageViaClaude(imageBase64, mediaType, ruleText);
+    } catch (err) {
+      console.error("Claude image suggestion failed:", err?.message);
+    }
+  }
+  return {
+    decided_by: "llm_suggested",
+    note: "Image grading needs an AI provider; a human should review this image.",
+  };
+}
+
+/**
+ * Vision judge — score an image pass/fail against the rubric (human-overridable).
+ * Falls back to the suggest-only path when no provider is configured or the
+ * model call/parse fails, so an image is never given a fabricated verdict.
+ *
+ * @returns {Promise<{verdict?: 'pass'|'fail', decided_by: string, note: string}>}
+ */
+export async function judgeImageByLLM(imageBase64, mediaType, ruleText) {
+  if (process.env.ANTHROPIC_API_KEY) {
+    try {
+      const { judgeImageViaClaude } = await import("./grading-claude.js");
+      return await judgeImageViaClaude(imageBase64, mediaType, ruleText);
+    } catch (err) {
+      console.error("Claude image judge failed; falling back to suggest:", err?.message);
+    }
+  }
+  return suggestImageFailure(imageBase64, mediaType, ruleText);
+}
+
 // Deterministic suggest-only hint (no key required, no verdict).
 function heuristicSuggest(text, good) {
   const hints = [];

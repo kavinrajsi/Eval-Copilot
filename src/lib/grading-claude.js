@@ -107,3 +107,108 @@ export async function judgeViaClaude(actual, knownGood, ruleText) {
     note: `[${confidence} confidence] ${rationale}`.trim(),
   };
 }
+
+// --- Vision path (images) --------------------------------------------------
+// Machine rules can't see pixels, so an image is always judged by the model
+// against the rubric's plain-English rule. The configured model MUST support
+// vision — Haiku 4.5 (the default) does; override to a sharper model with
+// ANTHROPIC_SUGGEST_MODEL (e.g. claude-opus-4-8) for nuanced brand judgment.
+
+const IMAGE_SUGGEST_SYSTEM = `You are a meticulous brand/design QA reviewer assisting a human grader.
+
+You NEVER give a final pass/fail verdict — a human decides that. Your only job is to flag concrete, visible problems in the IMAGE against the RUBRIC for that human to confirm.
+
+Look at what is actually in the image: off-brand colours, banned or generic fonts, purple gradients, neon, pure black (#000000) or pure white (#FFFFFF), crowded layouts, missing or misused logos, and anything the rubric calls out. Ground every point in what you can see — do not invent details that aren't in the image.
+
+Respond in 1-3 short, plain-text sentences. If nothing clearly stands out, say so and remind the reviewer to still confirm the subjective dimensions. No preamble, no markdown, no verdict.`;
+
+const IMAGE_JUDGE_SYSTEM = `You are an evaluation judge scoring one IMAGE against a brand/design RUBRIC.
+
+Grade strictly on what is visible in the image. Decide a single verdict — "pass" or "fail" — based only on what the rubric requires (off-brand colours, banned/generic fonts, purple gradients, neon, pure black/white, crowded layouts, logo misuse, etc.). Ground your judgment in what you can actually see; do not invent details.
+
+You are an automated first-pass grader; a human may override your verdict, so be precise and honest. Give a confidence level and a one-sentence rationale tied to the image.`;
+
+function imageBlock(imageBase64, mediaType) {
+  return {
+    type: "image",
+    source: { type: "base64", media_type: mediaType, data: imageBase64 },
+  };
+}
+
+/**
+ * Vision suggest — SUGGEST ONLY, no verdict. Flags visible problems in an image.
+ * @returns {Promise<{decided_by: 'llm_suggested', note: string}>}
+ */
+export async function suggestImageViaClaude(imageBase64, mediaType, ruleText) {
+  const client = new Anthropic();
+
+  const response = await client.messages.create({
+    model: MODEL,
+    max_tokens: 512,
+    system: IMAGE_SUGGEST_SYSTEM,
+    messages: [
+      {
+        role: "user",
+        content: [
+          imageBlock(imageBase64, mediaType),
+          {
+            type: "text",
+            text: `RUBRIC:\n${ruleText || "(none provided)"}\n\nFlag possible problems with this image for a human to review.`,
+          },
+        ],
+      },
+    ],
+  });
+
+  const note = response.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("")
+    .trim();
+
+  return { decided_by: "llm_suggested", note };
+}
+
+/**
+ * Vision judge — SCORES pass/fail for an image against the rubric. A human can
+ * still override. Throws on provider/parse errors so the caller can fall back.
+ * @returns {Promise<{verdict: 'pass'|'fail', decided_by: 'llm_judge', note: string}>}
+ */
+export async function judgeImageViaClaude(imageBase64, mediaType, ruleText) {
+  const client = new Anthropic();
+
+  const response = await client.messages.create({
+    model: MODEL,
+    max_tokens: 512,
+    system: IMAGE_JUDGE_SYSTEM,
+    output_config: { format: { type: "json_schema", schema: JUDGE_SCHEMA } },
+    messages: [
+      {
+        role: "user",
+        content: [
+          imageBlock(imageBase64, mediaType),
+          {
+            type: "text",
+            text: `RUBRIC:\n${ruleText || "(none provided)"}\n\nScore this image pass or fail against the rubric.`,
+          },
+        ],
+      },
+    ],
+  });
+
+  const text = response.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("");
+
+  const parsed = JSON.parse(text); // throws on malformed output → caller falls back
+  const verdict = parsed.verdict === "pass" ? "pass" : "fail";
+  const confidence = parsed.confidence ?? "low";
+  const rationale = (parsed.rationale ?? "").trim();
+
+  return {
+    verdict,
+    decided_by: "llm_judge",
+    note: `[${confidence} confidence] ${rationale}`.trim(),
+  };
+}

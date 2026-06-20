@@ -665,21 +665,35 @@ function Compare({ base, runs }) {
 // a golden case. Nothing is saved — it's a throwaway brand/rule check.
 function QuickTest({ base, rubric }) {
   const [content, setContent] = useState("");
+  const [image, setImage] = useState(null); // { data, media_type, name }
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
 
   const machine = isMachineCheckable(rubric?.rules ?? []);
 
+  function onPickImage(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () =>
+      setImage({ data: String(reader.result), media_type: file.type, name: file.name });
+    reader.onerror = () => toast.error("Couldn't read that image.");
+    reader.readAsDataURL(file);
+  }
+
   async function test(e) {
     e.preventDefault();
     setBusy(true);
     try {
+      const payload = { content };
+      if (image) payload.image = { data: image.data, media_type: image.media_type };
       const body = await jsonFetch(`${base}/quick-test`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify(payload),
       });
       setResult(body.result);
+      setImage(null);
     } catch (err) {
       toast.error(`Test failed: ${err.message}`);
     } finally {
@@ -721,10 +735,27 @@ function QuickTest({ base, rubric }) {
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder="Our premium ecosystem powers your brand journey."
-              required
             />
           </div>
-          <Button type="submit" disabled={busy || !content.trim()} className="justify-self-start">
+          <div className="grid gap-2">
+            <Label htmlFor="quick-test-image">Image to test (optional)</Label>
+            <Input
+              id="quick-test-image"
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              onChange={onPickImage}
+            />
+            <p className="text-muted-foreground text-xs">
+              {image
+                ? `Attached: ${image.name}`
+                : "Machine rules can't read images — an attached image is always reviewed by AI."}
+            </p>
+          </div>
+          <Button
+            type="submit"
+            disabled={busy || (!content.trim() && !image)}
+            className="justify-self-start"
+          >
             {busy ? "Testing…" : "Test content"}
           </Button>
         </form>
