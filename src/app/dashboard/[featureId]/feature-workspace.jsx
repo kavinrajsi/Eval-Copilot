@@ -212,6 +212,7 @@ function GoldenSet({ base, cases, onChange }) {
 function Rubric({ base, rubric, onChange }) {
   const [ruleText, setRuleText] = useState(rubric?.rule_text ?? "");
   const [rules, setRules] = useState(rubric?.rules ?? []);
+  const [graderMode, setGraderMode] = useState(rubric?.grader_mode ?? "suggest");
   const [type, setType] = useState("max_length");
   const [value, setValue] = useState("");
   const [token, setToken] = useState("");
@@ -235,7 +236,7 @@ function Rubric({ base, rubric, onChange }) {
       await jsonFetch(`${base}/rubric`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rule_text: ruleText, rules }),
+        body: JSON.stringify({ rule_text: ruleText, rules, grader_mode: graderMode }),
       });
       onChange();
     } catch (err) {
@@ -317,9 +318,31 @@ function Rubric({ base, rubric, onChange }) {
             </ul>
           ) : (
             <p className="text-muted-foreground text-sm">
-              No machine rules yet — without them, every case falls to a human.
+              No machine rules yet — without them, cases follow the fuzzy-case
+              grader below.
             </p>
           )}
+        </div>
+
+        <div className="grid gap-2">
+          <Label htmlFor="grader-mode">Fuzzy-case grader</Label>
+          <NativeSelect
+            id="grader-mode"
+            value={graderMode}
+            onChange={(e) => setGraderMode(e.target.value)}
+            className="w-full max-w-sm"
+          >
+            <NativeSelectOption value="suggest">
+              AI suggests, human decides
+            </NativeSelectOption>
+            <NativeSelectOption value="judge">
+              AI judges pass/fail (human can override)
+            </NativeSelectOption>
+          </NativeSelect>
+          <p className="text-muted-foreground text-xs">
+            Applies only to cases with no machine rule. Machine rules always
+            decide on their own.
+          </p>
         </div>
 
         <Button onClick={save} disabled={busy || !ruleText.trim()} className="justify-self-start">
@@ -384,8 +407,10 @@ function RunPanel({ base, cases, rubric, onRun }) {
       <CardContent>
         {!machine ? (
           <p className="text-muted-foreground mb-4 rounded-md border border-dashed px-3 py-2 text-sm">
-            This rubric has no machine rules — the AI will suggest a possible
-            failure for each case and a human confirms pass/fail in Results.
+            This rubric has no machine rules —{" "}
+            {rubric?.grader_mode === "judge"
+              ? "the AI will judge pass/fail for each case (you can override any verdict in Results)."
+              : "the AI will suggest a possible failure for each case and a human confirms pass/fail in Results."}
           </p>
         ) : null}
         <form onSubmit={run} className="grid gap-4">

@@ -64,17 +64,23 @@ export async function POST(request, { params }) {
     .single();
   if (runErr) return badRequest(runErr.message);
 
-  // Move 3 boundary: when the rubric has machine rules, a rule decides
-  // (decided_by 'rule'). When it has none, the case is fuzzy — the AI only
-  // SUGGESTS (decided_by 'llm_suggested', verdict null = pending) and a human
-  // confirms pass/fail later via the override. The AI never sets the verdict.
+  // Move 3 boundary. Machine rules always decide deterministically
+  // (decided_by 'rule'). With no machine rules, the rubric's grader_mode governs
+  // the fuzzy path: 'judge' lets the AI score pass/fail (decided_by 'llm_judge',
+  // human-overridable); 'suggest' (default) only flags a possible failure
+  // (decided_by 'llm_suggested', verdict null) for a human to confirm.
   const machine = isMachineCheckable(rules);
   const gradeRows = await Promise.all(
     outputs.map(async (o) => {
       const knownGood = knownGoodById.get(o.golden_case_id);
-      const result = machine
-        ? gradeByRule(o.actual_output, knownGood, rules)
-        : await suggestPossibleFailure(o.actual_output, knownGood);
+      let result;
+      if (machine) {
+        result = gradeByRule(o.actual_output, knownGood, rules);
+      } else if (graderMode === "judge") {
+        result = await judgeByLLM(o.actual_output, knownGood, ruleText);
+      } else {
+        result = await suggestPossibleFailure(o.actual_output, knownGood);
+      }
       return {
         run_id: run.id,
         golden_case_id: o.golden_case_id,

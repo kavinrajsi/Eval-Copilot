@@ -9,7 +9,7 @@ export async function GET(_request, { params }) {
 
   const { data, error } = await auth.supabase
     .from("rubric")
-    .select("id, rule_text, rules, created_at")
+    .select("id, rule_text, rules, grader_mode, created_at")
     .eq("feature_id", id)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -33,10 +33,12 @@ export async function POST(request, { params }) {
   const check = validateRules(rules);
   if (!check.ok) return badRequest(check.error);
 
+  const grader_mode = body.grader_mode === "judge" ? "judge" : "suggest";
+
   const { data, error } = await auth.supabase
     .from("rubric")
-    .insert({ feature_id: id, rule_text, rules })
-    .select("id, rule_text, rules, created_at")
+    .insert({ feature_id: id, rule_text, rules, grader_mode })
+    .select("id, rule_text, rules, grader_mode, created_at")
     .single();
 
   if (error) return badRequest(error.message);

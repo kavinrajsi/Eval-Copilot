@@ -62,6 +62,7 @@ a {
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-redpen: var(--redpen);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -104,6 +105,7 @@ a {
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --redpen: oklch(0.577 0.225 25);
 }
 
 .dark {
@@ -138,6 +140,7 @@ a {
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --redpen: oklch(0.704 0.191 22.216);
 }
 
 @layer base {
@@ -150,4 +153,46 @@ a {
   html {
     @apply font-sans;
   }
+}
+
+/* ── Home page signature: the graded specimen ───────────────────────── */
+
+/* A red pen mark that draws itself left-to-right under an offending span. */
+.mark-underline {
+  background-image: linear-gradient(var(--redpen), var(--redpen));
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 0% 2px;
+  transition: background-size 480ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.mark-underline[data-graded="true"] {
+  background-size: 100% 2px;
+}
+
+/* The scan line that sweeps the specimen once while it is being graded. */
+.grading-scan {
+  animation: grading-scan 1100ms cubic-bezier(0.4, 0, 0.2, 1) 1 forwards;
+}
+@keyframes grading-scan {
+  0% { transform: translateY(-1.5rem); opacity: 0; }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { transform: translateY(var(--scan-travel, 14rem)); opacity: 0; }
+}
+
+/* Margin notes and the verdict rise in as each mark lands. */
+.grade-rise {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 360ms ease, transform 360ms ease;
+}
+.grade-rise[data-graded="true"] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mark-underline { transition: none; }
+  .grading-scan { animation: none; opacity: 0; }
+  .grade-rise { transition: none; }
 }
