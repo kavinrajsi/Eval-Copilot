@@ -901,6 +901,9 @@ function QuickTest({ base, rubric }) {
   const [image, setImage] = useState(null); // { data, media_type, name }
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState([]);
+  const [runs, setRuns] = useState(5);
+  const [stability, setStability] = useState(null);
+  const [stabBusy, setStabBusy] = useState(false);
 
   const machine = isMachineCheckable(rubric?.rules ?? []);
 
@@ -955,6 +958,25 @@ function QuickTest({ base, rubric }) {
       await loadHistory();
     } catch (err) {
       toast.error(`Couldn't delete: ${err.message}`);
+    }
+  }
+
+  async function checkStability() {
+    setStabBusy(true);
+    setStability(null);
+    try {
+      const payload = { content, runs: Number(runs) };
+      if (image) payload.image = { data: image.data, media_type: image.media_type };
+      const body = await jsonFetch(`${base}/stability`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setStability(body);
+    } catch (err) {
+      toast.error(`Stability check failed: ${err.message}`);
+    } finally {
+      setStabBusy(false);
     }
   }
 
@@ -1017,6 +1039,65 @@ function QuickTest({ base, rubric }) {
             {busy ? "Testing…" : "Test content"}
           </Button>
         </form>
+
+        <div className="grid gap-2 border-t pt-4">
+          <Label className="text-sm">Stability (consistency) check</Label>
+          <p className="text-muted-foreground text-xs">
+            Grade the same input several times to see how consistent the AI is —
+            reliability, not accuracy. Only meaningful in judge mode (machine
+            rules are deterministic).
+          </p>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min="2"
+              max="10"
+              value={runs}
+              onChange={(e) => setRuns(e.target.value)}
+              className="w-20"
+            />
+            <span className="text-muted-foreground text-xs">runs</span>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={checkStability}
+              disabled={stabBusy || (!content.trim() && !image)}
+            >
+              {stabBusy ? "Checking…" : "Check stability"}
+            </Button>
+          </div>
+
+          {stability ? (
+            stability.status === "ok" ? (
+              <div className="grid gap-1 rounded-md border p-4 text-sm">
+                <p className="font-medium">
+                  {stability.summary.stablePct}% stable over {stability.runs} runs —
+                  modal verdict{" "}
+                  <span className="font-mono">{stability.summary.modalVerdict}</span>
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  verdicts:{" "}
+                  {Object.entries(stability.summary.counts)
+                    .map(([v, n]) => `${v}×${n}`)
+                    .join(" · ")}
+                  {stability.summary.score
+                    ? ` — score mean ${stability.summary.score.mean} ± ${stability.summary.score.sd} (${stability.summary.score.min}–${stability.summary.score.max})`
+                    : ""}
+                </p>
+                {stability.summary.stablePct < 100 ? (
+                  <p className="text-destructive text-xs">
+                    ⚠ The grader disagreed with itself — this case is borderline or
+                    the rubric is ambiguous.
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-muted-foreground rounded-md border border-dashed px-3 py-2 text-sm">
+                {stability.message}
+              </p>
+            )
+          ) : null}
+        </div>
 
         {history.length ? (
           <Table>
