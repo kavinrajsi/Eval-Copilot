@@ -57,32 +57,40 @@ Track B walks the shared five-move spine. Each move ends in a deliverable.
 
 ## The application
 
-The app is the plumbing the five moves run on. It is a **Next.js 16** application with multi-user authentication already wired up — the foundation for **Move 4**, where every builder's golden sets, rubrics, and runs must be isolated per user (row-level security).
+The app is the plumbing the five moves run on — a full **Next.js 16** application where a builder can evaluate their AI feature end to end, with every builder's data isolated per user (row-level security).
 
 What's built today:
 
-- **Multi-user auth** — email/password sign-up and sign-in backed by **Supabase Auth**, with cookie-based sessions that work across Server Components, Server Actions, and middleware.
-- **Protected routes** — `/dashboard` is guarded in middleware (unauthenticated requests redirect to `/login`) and again in the page itself as defense in depth. Authenticated users hitting `/login` are bounced to `/dashboard`.
-- **Session refresh** — middleware refreshes the auth token on every request via Supabase's verified `getClaims()`, keeping the browser and server in sync.
-- **UI kit** — the full **shadcn/ui** component set (55 components, `base-nova` style, neutral base color, light/dark via CSS variables) ready to compose the golden-set / rubric / run surfaces.
+- **Multi-user auth** — separate email/password **sign-in** (`/login`) and **sign-up** (`/signup`) pages plus **password recovery** (`/forgot-password` → emailed link → `/reset-password`), backed by **Supabase Auth** with cookie sessions that work across Server Components, Server Actions, and the routing proxy.
+- **Protected routes** — `/dashboard` and its sub-routes are guarded in `src/proxy.js` (unauthenticated requests redirect to `/login`) and again in the layout as defense in depth; authenticated users hitting `/login` are bounced to `/dashboard`.
+- **Dashboard** — a sidebar + sticky-header shell (the shadcn `dashboard-01` layout, rebuilt natively on `base-nova`) with KPI cards, a pass-rate-by-run chart (recharts), and a features table.
+- **Feature workspace** — per feature, the five-tab flow **Golden Set → Rubric → Run → Results → Compare** (`src/app/dashboard/[featureId]/feature-workspace.jsx`).
+- **Grading engine** — deterministic machine rules decide where they can (`decided_by: rule`); for fuzzy cases the rubric's grader mode either has the AI **suggest** a possible failure for a human to confirm (`llm_suggested`, verdict pending) or **judge** pass/fail (`llm_judge`, human-overridable). Uses the Anthropic SDK when `ANTHROPIC_API_KEY` is set, with a key-free heuristic fallback.
+- **Onboarding walkthrough** — a driver.js spotlight tour that runs on first login and is replayable.
+- **Theming** — light / dark / system via `next-themes`, toggled from a header button.
+- **Starter feature** — every new account is auto-provisioned a **Brand Rulebook Checker** example (golden set + rubric) via a Supabase signup trigger, so the dashboard isn't empty.
+- **UI kit** — the full **shadcn/ui** component set (55 components, `base-nova` style, neutral base color).
 
 ### Routes
 
-| Route              | Type    | Description                                                        |
-| ------------------ | ------- | ------------------------------------------------------------------ |
-| `/`                | Static  | Starter home page                                                  |
-| `/login`           | Static  | Email/password sign-in and sign-up card                            |
-| `/forgot-password` | Static  | Request a password reset link by email                            |
-| `/reset-password`  | Static  | Set a new password (reached via the emailed reset link)           |
-| `/auth/callback`   | Dynamic | Exchanges the email link's code for a session, then redirects     |
-| `/dashboard`       | Dynamic | Protected — shows the signed-in user's email and ID, plus sign-out |
+| Route                  | Type    | Description                                                           |
+| ---------------------- | ------- | --------------------------------------------------------------------- |
+| `/`                    | Static  | Landing page (pitch + Move 1 evidence)                                |
+| `/login`               | Static  | Email/password sign-in                                                |
+| `/signup`              | Static  | Create an account                                                     |
+| `/forgot-password`     | Static  | Request a password reset link by email                                |
+| `/reset-password`      | Static  | Set a new password (reached via the emailed reset link)               |
+| `/auth/callback`       | Dynamic | Exchanges the email link's code for a session, then redirects         |
+| `/dashboard`           | Dynamic | Protected — KPI cards, pass-rate chart, and the features table        |
+| `/dashboard/new`       | Dynamic | Create a feature                                                      |
+| `/dashboard/[id]`      | Dynamic | A feature's workspace (Golden Set / Rubric / Run / Results / Compare) |
 
 ### Auth flow
 
-1. The `/login` form posts to the `authenticate` **Server Action** (`src/app/login/actions.js`), which calls `supabase.auth.signInWithPassword()` or `supabase.auth.signUp()` based on which button was pressed. Errors and "check your email" states render inline.
-2. On success the session is written to secure cookies and the user is redirected to `/dashboard`.
-3. `src/proxy.js` runs `updateSession()` on every matched request: it refreshes claims and enforces the redirect rules above.
-4. `signout()` clears the session and returns to `/login`.
+1. `/login` and `/signup` post to Server Actions in `src/app/login/actions.js`, calling `supabase.auth.signInWithPassword()` / `supabase.auth.signUp()`. Errors and "check your email" states render inline.
+2. On success the session is written to secure cookies and the user is redirected to `/dashboard`. A Supabase trigger provisions the new account's starter feature on sign-up.
+3. `src/proxy.js` runs `updateSession()` on every matched request: it refreshes claims (verified `getClaims()`) and enforces the redirect rules above.
+4. `signout()` clears the session and returns to `/login` (invoked from the sidebar avatar menu).
 
 **Password recovery:** `/forgot-password` posts to `requestPasswordReset` (`src/app/forgot-password/actions.js`), which calls `supabase.auth.resetPasswordForEmail()` with a `redirectTo` of `${NEXT_PUBLIC_SITE_URL}/auth/callback?next=/reset-password`. The emailed link lands on `/auth/callback`, which calls `exchangeCodeForSession()` to establish a recovery session, then forwards to `/reset-password`. There the `updatePassword` action calls `supabase.auth.updateUser({ password })` and redirects to `/dashboard`. The reset link's redirect URL must be added to **Supabase → Authentication → URL Configuration → Redirect URLs**.
 
@@ -96,8 +104,12 @@ What's built today:
 | Language    | JavaScript / JSX (no TypeScript)                             |
 | UI          | React 19.2.4                                                 |
 | Styling     | Tailwind CSS v4 (`@import "tailwindcss"`, PostCSS plugin)    |
-| Components  | shadcn/ui (`base-nova` style) + lucide-react icons           |
+| Components  | shadcn/ui (`base-nova` style, base-ui under the hood) + lucide-react icons |
 | Auth & data | Supabase (`@supabase/supabase-js`, `@supabase/ssr`)          |
+| AI grading  | `@anthropic-ai/sdk` (LLM suggest / judge), optional — heuristic fallback without a key |
+| Charts      | recharts (pass-rate chart)                                   |
+| Onboarding  | driver.js (spotlight walkthrough)                            |
+| Theming     | next-themes (light / dark / system)                          |
 | Linting     | ESLint 9 (`eslint-config-next/core-web-vitals`, flat config) |
 | Path alias  | `@/*` → `src/*`                                              |
 
@@ -122,9 +134,10 @@ Create a `.env.local` in the repo root (it is gitignored):
 NEXT_PUBLIC_SUPABASE_URL=https://<your-project-ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<your-publishable-key>
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
+ANTHROPIC_API_KEY=<optional — enables the LLM suggest/judge graders>
 ```
 
-The two Supabase values come from your dashboard → **Project Settings → API**. Use the **publishable** key (not the secret/service-role key). `NEXT_PUBLIC_SITE_URL` is the app's public origin — it builds the password-reset link's redirect target (set it to your deployed URL in production). Add `<NEXT_PUBLIC_SITE_URL>/auth/callback` to **Authentication → URL Configuration → Redirect URLs** so the reset link is accepted.
+The two Supabase values come from your dashboard → **Project Settings → API**. Use the **publishable** key (not the secret/service-role key). `NEXT_PUBLIC_SITE_URL` is the app's public origin — it builds the password-reset link's redirect target (set it to your deployed URL in production). Add `<NEXT_PUBLIC_SITE_URL>/auth/callback` to **Authentication → URL Configuration → Redirect URLs** so the reset link is accepted. `ANTHROPIC_API_KEY` is **optional** — set it to use Claude for the fuzzy-case graders; without it they fall back to a deterministic heuristic.
 
 > If email confirmation is enabled in **Authentication → Providers → Email**, a new sign-up won't get a session until the user confirms via email — the login form will show "Check your email to confirm your account." Disable it for faster local testing.
 
@@ -152,7 +165,8 @@ Visit `http://localhost:3000/dashboard` → you'll be redirected to `/login`. Cr
 ├── eslint.config.mjs           ESLint 9 flat config
 ├── postcss.config.mjs          Tailwind v4 PostCSS plugin
 ├── package.json
-├── doc/                        Hackathon evidence (Moves 1–5)
+├── doc/                        Hackathon evidence (Moves 1–5) + guide
+│   ├── getting-started.md        New-user step-by-step guide
 │   ├── hypothesis.md             Move 2 — the timestamped bet
 │   ├── who-checks-what.md        Move 3 — computer checks vs. human judgement
 │   ├── domain-model.md           Move 4 — schema, comparison keys, ownership walls
@@ -164,27 +178,37 @@ Visit `http://localhost:3000/dashboard` → you'll be redirected to `/login`. Cr
 ├── public/                     Static assets
 └── src/
     ├── app/
-    │   ├── layout.js             Root layout (Geist fonts, TooltipProvider)
-    │   ├── page.js               Home page
+    │   ├── layout.js             Root layout (fonts, ThemeProvider, Toaster)
+    │   ├── page.js               Landing page
     │   ├── globals.css           Tailwind v4 import + theme tokens (light/dark)
-    │   ├── login/                Sign-in / sign-up form + server actions
+    │   ├── login/, signup/       Sign-in / sign-up pages + server actions
     │   ├── forgot-password/      Request a reset link + server action
     │   ├── reset-password/       Set a new password + server action
     │   ├── auth/callback/        Code-for-session exchange (route handler)
     │   ├── dashboard/
-    │   │   ├── page.js           My Features (list + create)
-    │   │   ├── new-feature-form.jsx
-    │   │   └── [featureId]/      Golden Set / Rubric / Run / Results / Compare
-    │   └── api/                  Route handlers: features, golden-cases,
-    │       │                       rubric, runs, grades, compare
+    │   │   ├── layout.js         Sidebar + header shell (auth-guarded)
+    │   │   ├── page.js           Overview: KPI cards, chart, features table
+    │   │   ├── new/              Create-feature page + form
+    │   │   └── [featureId]/      feature-workspace.jsx (the 5 tabs)
+    │   └── api/                  Route handlers: features, golden-cases (+delete),
+    │                               rubric, runs (+delete), grades, compare
     ├── proxy.js                  Session refresh + route guards
-    ├── components/ui/            55 shadcn/ui components
+    ├── components/
+    │   ├── app-sidebar / nav-user / site-header   Dashboard shell
+    │   ├── section-cards / eval-chart / features-table   Dashboard content
+    │   ├── login-form / signup-form / auth-shell   Auth UI
+    │   ├── mode-toggle / theme-provider            Theming
+    │   ├── walkthrough / graded-specimen           Tour + landing visual
+    │   └── ui/                   55 shadcn/ui components
     ├── hooks/use-mobile.js
     └── lib/
-        ├── utils.js              cn() class-merge helper
-        ├── grading.js            The grading engine (rules + suggest-only AI)
+        ├── grading.js            Grading engine (rules + AI suggest/judge)
+        ├── grading-claude.js     Anthropic calls for suggest/judge (server-only)
         ├── api.js                requireUser() + JSON helpers for routes
-        └── supabase/             Browser / server / middleware clients
+        ├── site-url.js           Public origin for auth redirect links
+        ├── tours.js              Walkthrough step definitions
+        ├── utils.js              cn() class-merge helper
+        └── supabase/             Browser / server / proxy clients
 ```
 
 ## The track

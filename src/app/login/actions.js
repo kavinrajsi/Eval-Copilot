@@ -42,7 +42,8 @@ export async function authenticate(prevState, formData) {
   }
 
   revalidatePath("/", "layout");
-  redirect("/dashboard");
+  // ?welcome=1 tells the dashboard walkthrough to auto-start on this login.
+  redirect("/dashboard?welcome=1");
 }
 
 export async function signout() {
