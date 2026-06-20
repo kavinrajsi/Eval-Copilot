@@ -81,40 +81,53 @@ export async function POST(request, { params }) {
   // human-overridable); 'suggest' (default) only flags a possible failure
   // (decided_by 'llm_suggested', verdict null) for a human to confirm.
   const machine = isMachineCheckable(rules);
-  const gradeRows = await Promise.all(
-    outputs.map(async (o) => {
-      const knownGood = knownGoodById.get(o.golden_case_id);
-      let result;
-      if (machine) {
-        result = gradeByRule(o.actual_output, knownGood, rules);
-      } else if (graderMode === "judge" && criteria.length) {
-        result = await judgeMultiByLLM(o.actual_output, knownGood, ruleText, knowledge, criteria, threshold);
-      } else if (graderMode === "judge") {
-        result = await judgeByLLM(o.actual_output, knownGood, ruleText, knowledge);
-      } else {
-        result = await suggestPossibleFailure(o.actual_output, knownGood, knowledge);
-      }
-      return {
-        run_id: run.id,
-        golden_case_id: o.golden_case_id,
-        actual_output: o.actual_output ?? "",
-        verdict: result.verdict ?? null,
-        // Preserve the machine's verdict so a later human override can be
-        // compared against it (confusion matrix). Null for suggest-only cases.
-        auto_verdict: result.verdict ?? null,
-        score: result.score ?? null,
-        scores: result.scores ?? null,
-        decided_by: result.decided_by,
-        note: result.note ?? null,
-      };
-    }),
-  );
+  async function gradeOne(o) {
+    const knownGood = knownGoodById.get(o.golden_case_id);
+    let result;
+    if (machine) {
+      result = gradeByRule(o.actual_output, knownGood, rules);
+    } else if (graderMode === "judge" && criteria.length) {
+      result = await judgeMultiByLLM(o.actual_output, knownGood, ruleText, knowledge, criteria, threshold);
+    } else if (graderMode === "judge") {
+      result = await judgeByLLM(o.actual_output, knownGood, ruleText, knowledge);
+    } else {
+      result = await suggestPossibleFailure(o.actual_output, knownGood, knowledge);
+    }
+    return {
+      run_id: run.id,
+      golden_case_id: o.golden_case_id,
+      actual_output: o.actual_output ?? "",
+      verdict: result.verdict ?? null,
+      // Preserve the machine's verdict so a later human override can be
+      // compared against it (confusion matrix). Null for suggest-only cases.
+      auto_verdict: result.verdict ?? null,
+      score: result.score ?? null,
+      scores: result.scores ?? null,
+      decided_by: result.decided_by,
+      note: result.note ?? null,
+    };
+  }
 
-  const { data: grades, error: gradeErr } = await supabase
-    .from("grade")
-    .insert(gradeRows)
-    .select("golden_case_id, verdict, decided_by, note");
-  if (gradeErr) return badRequest(gradeErr.message);
+  // Grade with bounded concurrency (caps in-flight model calls on the AI paths;
+  // machine rules are sync so this is just a tidy loop for them).
+  const CONCURRENCY = 8;
+  const gradeRows = [];
+  for (let k = 0; k < outputs.length; k += CONCURRENCY) {
+    const batch = await Promise.all(outputs.slice(k, k + CONCURRENCY).map(gradeOne));
+    gradeRows.push(...batch);
+  }
+
+  // Insert grades in chunks so a large run stays under payload/row limits.
+  const CHUNK = 500;
+  let grades = [];
+  for (let k = 0; k < gradeRows.length; k += CHUNK) {
+    const { data, error } = await supabase
+      .from("grade")
+      .insert(gradeRows.slice(k, k + CHUNK))
+      .select("golden_case_id, verdict, decided_by, note");
+    if (error) return badRequest(error.message);
+    grades = grades.concat(data);
+  }
 
   const pass = grades.filter((g) => g.verdict === "pass").length;
   const fail = grades.filter((g) => g.verdict === "fail").length;

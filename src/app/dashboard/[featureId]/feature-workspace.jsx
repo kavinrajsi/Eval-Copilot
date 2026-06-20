@@ -788,6 +788,8 @@ function RunPanel({ base, cases, rubric, onRun }) {
 
   const machine = isMachineCheckable(rubric?.rules ?? []);
 
+  const showForm = cases.length <= 50; // per-case textareas only for small sets
+
   async function run(e) {
     e.preventDefault();
     setBusy(true);
@@ -808,6 +810,50 @@ function RunPanel({ base, cases, rubric, onRun }) {
       onRun();
     } catch (err) {
       toast.error(`Grading failed: ${err.message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Bulk path: a CSV of input,actual_output matched to golden cases by input.
+  async function runFromCsv(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    try {
+      const parsed = parseCsv(await file.text());
+      if (!parsed.length) throw new Error("empty file");
+      const header = parsed[0].map((h) => h.trim().toLowerCase());
+      const iIn = header.indexOf("input");
+      const iOut = header.indexOf("actual_output");
+      if (iIn < 0 || iOut < 0) throw new Error("CSV needs 'input' and 'actual_output' headers");
+
+      const byInput = new Map(cases.map((c) => [c.input.trim(), c.id]));
+      const built = [];
+      let unmatched = 0;
+      for (const r of parsed.slice(1)) {
+        const id = byInput.get((r[iIn] ?? "").trim());
+        if (!id) {
+          unmatched++;
+          continue;
+        }
+        built.push({ golden_case_id: id, actual_output: r[iOut] ?? "" });
+      }
+      if (!built.length) throw new Error("no rows matched a golden-case input");
+
+      const body = await jsonFetch(`${base}/runs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: label || "imported run", outputs: built }),
+      });
+      setResult(body);
+      onRun();
+      toast.success(
+        `Graded ${built.length} case${built.length === 1 ? "" : "s"}${unmatched ? `, ${unmatched} unmatched skipped` : ""}`,
+      );
+    } catch (err) {
+      toast.error(`Run import failed: ${err.message}`);
     } finally {
       setBusy(false);
     }
@@ -838,6 +884,22 @@ function RunPanel({ base, cases, rubric, onRun }) {
               : "the AI will suggest a possible failure for each case and a human confirms pass/fail in Results."}
           </p>
         ) : null}
+        <div className="mb-4 grid gap-2 rounded-md border p-3">
+          <Label htmlFor="run-import" className="text-xs">Import outputs (CSV)</Label>
+          <Input
+            id="run-import"
+            type="file"
+            accept=".csv"
+            onChange={runFromCsv}
+            disabled={busy}
+            className="w-72"
+          />
+          <p className="text-muted-foreground text-xs">
+            CSV with <code>input</code> and <code>actual_output</code> columns; rows match a
+            golden case by <code>input</code>. Best for large sets.
+          </p>
+        </div>
+
         <form onSubmit={run} className="grid gap-4">
           <div className="grid gap-2">
             <Label>Run label</Label>
@@ -847,19 +909,28 @@ function RunPanel({ base, cases, rubric, onRun }) {
               placeholder="v1 — before fix"
             />
           </div>
-          {cases.map((c) => (
-            <div key={c.id} className="grid gap-2">
-              <Label className="text-muted-foreground text-xs">{c.input}</Label>
-              <Textarea
-                value={outputs[c.id] ?? ""}
-                onChange={(e) => setOutputs((p) => ({ ...p, [c.id]: e.target.value }))}
-                placeholder="e.g. PASS — all brand elements within guideline"
-              />
-            </div>
-          ))}
-          <Button type="submit" disabled={busy} className="justify-self-start">
-            {busy ? "Grading…" : "Grade run"}
-          </Button>
+          {showForm ? (
+            cases.map((c) => (
+              <div key={c.id} className="grid gap-2">
+                <Label className="text-muted-foreground text-xs">{c.input}</Label>
+                <Textarea
+                  value={outputs[c.id] ?? ""}
+                  onChange={(e) => setOutputs((p) => ({ ...p, [c.id]: e.target.value }))}
+                  placeholder="e.g. PASS — all brand elements within guideline"
+                />
+              </div>
+            ))
+          ) : (
+            <p className="text-muted-foreground rounded-md border border-dashed px-3 py-2 text-sm">
+              {cases.length} golden cases — too many to paste individually. Import outputs as
+              CSV above to grade them.
+            </p>
+          )}
+          {showForm ? (
+            <Button type="submit" disabled={busy} className="justify-self-start">
+              {busy ? "Grading…" : "Grade run"}
+            </Button>
+          ) : null}
         </form>
 
         {result?.summary ? (
@@ -898,16 +969,44 @@ function RunPanel({ base, cases, rubric, onRun }) {
 
 // --- Results --------------------------------------------------------------
 
+const RESULTS_PAGE = 50;
+
 function Results({ runs, onChange }) {
   const [runId, setRunId] = useState("");
   const [grades, setGrades] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [reviewed, setReviewed] = useState([]); // full human-reviewed set for the matrix
+
+  const loadReviewed = useCallback(async (rid) => {
+    if (!rid) return;
+    try {
+      const b = await jsonFetch(`/api/runs/${rid}/grades?reviewed=1`);
+      setReviewed(b.grades ?? []);
+    } catch {
+      /* matrix is best-effort */
+    }
+  }, []);
 
   useEffect(() => {
     if (!runId) return;
-    jsonFetch(`/api/runs/${runId}/grades`)
-      .then((b) => setGrades(b.grades ?? []))
+    jsonFetch(`/api/runs/${runId}/grades?limit=${RESULTS_PAGE}&offset=${page * RESULTS_PAGE}`)
+      .then((b) => {
+        setGrades(b.grades ?? []);
+        setTotal(b.total ?? 0);
+      })
       .catch((e) => toast.error(`Couldn't load grades: ${e.message}`));
-  }, [runId]);
+  }, [runId, page]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadReviewed(runId);
+  }, [runId, loadReviewed]);
+
+  function pickRun(rid) {
+    setPage(0);
+    setRunId(rid);
+  }
 
   async function deleteRun() {
     if (!runId) return;
@@ -915,6 +1014,8 @@ function Results({ runs, onChange }) {
       await jsonFetch(`/api/runs/${runId}`, { method: "DELETE" });
       setRunId("");
       setGrades([]);
+      setReviewed([]);
+      setTotal(0);
       onChange?.();
     } catch (e) {
       toast.error(`Couldn't delete run: ${e.message}`);
@@ -931,10 +1032,15 @@ function Results({ runs, onChange }) {
       setGrades((prev) =>
         prev.map((g) => (g.id === id ? { ...g, verdict, decided_by: "human" } : g)),
       );
+      loadReviewed(runId); // refresh the matrix
     } catch (e) {
       toast.error(`Couldn't override verdict: ${e.message}`);
     }
   }
+
+  const start = total ? page * RESULTS_PAGE + 1 : 0;
+  const end = Math.min(total, (page + 1) * RESULTS_PAGE);
+  const maxPage = Math.max(0, Math.ceil(total / RESULTS_PAGE) - 1);
 
   return (
     <Card>
@@ -946,7 +1052,7 @@ function Results({ runs, onChange }) {
         <div className="flex items-center gap-2">
           <NativeSelect
             value={runId}
-            onChange={(e) => setRunId(e.target.value)}
+            onChange={(e) => pickRun(e.target.value)}
             className="w-full max-w-sm"
           >
             <NativeSelectOption value="">Pick a run…</NativeSelectOption>
@@ -963,7 +1069,7 @@ function Results({ runs, onChange }) {
           ) : null}
         </div>
 
-        <ConfusionMatrix grades={grades} />
+        <ConfusionMatrix grades={reviewed} />
 
         {grades.length ? (
           <Table>
@@ -1000,6 +1106,33 @@ function Results({ runs, onChange }) {
               ))}
             </TableBody>
           </Table>
+        ) : null}
+
+        {runId && total > RESULTS_PAGE ? (
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground text-xs">
+              {start}–{end} of {total}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="ml-auto"
+              disabled={page <= 0}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+            >
+              Prev
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={page >= maxPage}
+              onClick={() => setPage((p) => Math.min(maxPage, p + 1))}
+            >
+              Next
+            </Button>
+          </div>
         ) : null}
       </CardContent>
     </Card>
