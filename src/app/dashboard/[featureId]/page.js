@@ -1,8 +1,8 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import FeatureWorkspace from "@/app/dashboard/[featureId]/feature-workspace";
-import { Button } from "@/components/ui/button";
+import { SiteHeader } from "@/components/site-header";
+import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function FeaturePage({ params }) {
@@ -23,22 +23,15 @@ export default async function FeaturePage({ params }) {
   if (!feature) notFound();
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
-      <div className="mb-6">
-        <Button
-          render={<Link href="/dashboard" />}
-          variant="ghost"
-          size="sm"
-          className="mb-2 -ml-2"
-        >
-          ← All features
-        </Button>
-        <h1 className="text-2xl font-semibold">{feature.name}</h1>
+    <>
+      <SiteHeader title={feature.name}>
         {feature.feature_type ? (
-          <p className="text-muted-foreground text-sm">{feature.feature_type}</p>
+          <Badge variant="secondary">{feature.feature_type}</Badge>
         ) : null}
+      </SiteHeader>
+      <div className="p-4 md:p-6">
+        <FeatureWorkspace featureId={feature.id} />
       </div>
-      <FeatureWorkspace featureId={feature.id} />
-    </div>
+    </>
   );
 }

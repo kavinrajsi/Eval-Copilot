@@ -1,18 +1,15 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { signout } from "@/app/login/actions";
 import NewFeatureForm from "@/app/dashboard/new-feature-form";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { EvalChart } from "@/components/eval-chart";
+import { FeaturesTable } from "@/components/features-table";
+import { SectionCards } from "@/components/section-cards";
+import { SiteHeader } from "@/components/site-header";
 import { createClient } from "@/lib/supabase/server";
+
+function rate(pass, total) {
+  return total ? Math.round((pass / total) * 100) : null;
+}
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -21,57 +18,89 @@ export default async function DashboardPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: features } = await supabase
-    .from("feature")
-    .select("id, name, feature_type, created_at")
-    .order("created_at", { ascending: false });
+  // RLS-scoped reads; aggregate in JS.
+  const [{ data: features }, { data: cases }, { data: runs }, { data: grades }] =
+    await Promise.all([
+      supabase
+        .from("feature")
+        .select("id, name, feature_type, created_at")
+        .order("created_at", { ascending: false }),
+      supabase.from("golden_case").select("feature_id"),
+      supabase
+        .from("run")
+        .select("id, feature_id, label, created_at")
+        .order("created_at", { ascending: true }),
+      supabase.from("grade").select("run_id, verdict"),
+    ]);
+
+  const featureList = features ?? [];
+  const caseList = cases ?? [];
+  const runList = runs ?? [];
+  const gradeList = grades ?? [];
+
+  // grades grouped by run
+  const byRun = new Map();
+  for (const g of gradeList) {
+    const r = byRun.get(g.run_id) ?? { pass: 0, total: 0 };
+    r.total += 1;
+    if (g.verdict === "pass") r.pass += 1;
+    byRun.set(g.run_id, r);
+  }
+
+  // KPIs
+  const totalPass = gradeList.filter((g) => g.verdict === "pass").length;
+  const passRate = rate(totalPass, gradeList.length) ?? 0;
+
+  // Chart: pass rate per run, oldest → newest
+  const chartData = runList.map((r) => {
+    const c = byRun.get(r.id) ?? { pass: 0, total: 0 };
+    return {
+      name: r.label ?? new Date(r.created_at).toLocaleDateString(),
+      passRate: rate(c.pass, c.total) ?? 0,
+      pass: c.pass,
+      fail: c.total - c.pass,
+    };
+  });
+
+  // Table rows: per-feature counts + latest-run pass rate
+  const casesByFeature = new Map();
+  for (const c of caseList) {
+    casesByFeature.set(c.feature_id, (casesByFeature.get(c.feature_id) ?? 0) + 1);
+  }
+  const runsByFeature = new Map();
+  for (const r of runList) {
+    const arr = runsByFeature.get(r.feature_id) ?? [];
+    arr.push(r);
+    runsByFeature.set(r.feature_id, arr);
+  }
+  const rows = featureList.map((f) => {
+    const fRuns = runsByFeature.get(f.id) ?? [];
+    const latest = fRuns[fRuns.length - 1]; // runs are ascending by created_at
+    const c = latest ? byRun.get(latest.id) : null;
+    return {
+      id: f.id,
+      name: f.name,
+      type: f.feature_type,
+      cases: casesByFeature.get(f.id) ?? 0,
+      runs: fRuns.length,
+      latestPassRate: c ? rate(c.pass, c.total) : null,
+    };
+  });
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <header className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Eval Copilot</h1>
-          <p className="text-muted-foreground text-sm">{user.email}</p>
-        </div>
-        <form action={signout}>
-          <Button type="submit" variant="outline" size="sm">
-            Sign out
-          </Button>
-        </form>
-      </header>
-
-      <div className="grid gap-6">
+    <>
+      <SiteHeader title="Dashboard" />
+      <div className="flex flex-col gap-6 p-4 md:p-6">
+        <SectionCards
+          totalFeatures={featureList.length}
+          totalCases={caseList.length}
+          totalRuns={runList.length}
+          passRate={passRate}
+        />
+        <EvalChart data={chartData} />
+        <FeaturesTable rows={rows} />
         <NewFeatureForm />
-
-        <Card>
-          <CardHeader>
-            <CardTitle>My Features</CardTitle>
-            <CardDescription>
-              Each feature has a golden set, a rubric, and runs you can compare.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-2">
-            {features?.length ? (
-              features.map((f) => (
-                <Link
-                  key={f.id}
-                  href={`/dashboard/${f.id}`}
-                  className="hover:bg-accent flex items-center justify-between rounded-md border px-4 py-3 transition-colors"
-                >
-                  <span className="font-medium">{f.name}</span>
-                  {f.feature_type ? (
-                    <Badge variant="secondary">{f.feature_type}</Badge>
-                  ) : null}
-                </Link>
-              ))
-            ) : (
-              <p className="text-muted-foreground text-sm">
-                No features yet — create one above to get started.
-              </p>
-            )}
-          </CardContent>
-        </Card>
       </div>
-    </div>
+    </>
   );
 }
