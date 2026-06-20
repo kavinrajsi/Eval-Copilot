@@ -119,27 +119,6 @@ export function NavUser({ user }) {
             align="start"
             sideOffset={4}
           >
-            {/* account header */}
-            <div className="flex items-start justify-between gap-2 px-1.5 py-1.5">
-              <div className="grid min-w-0">
-                <span className="truncate text-sm font-medium">
-                  {displayName}
-                </span>
-                <span className="truncate text-xs text-muted-foreground">
-                  {email}
-                </span>
-              </div>
-              <Link
-                href="/dashboard/settings"
-                aria-label="Account settings"
-                className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                <SettingsIcon className="size-4" />
-              </Link>
-            </div>
-
-            <DropdownMenuSeparator />
-
             {/* theme — interactive, does not close the menu */}
             <div className="flex items-center justify-between gap-2 px-1.5 py-1.5 text-sm">
               <span>Theme</span>
@@ -152,6 +131,11 @@ export function NavUser({ user }) {
             <LinkRow href="/docs" icon={BookOpenIcon}>
               Docs
             </LinkRow>
+            <LinkRow href="/dashboard/settings" icon={SettingsIcon}>
+              Settings
+            </LinkRow>
+
+            <DropdownMenuSeparator />
 
             <DropdownMenuItem
               className="gap-2 py-1.5"
