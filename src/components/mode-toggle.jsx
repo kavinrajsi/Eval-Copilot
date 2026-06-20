@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
 
 export function ModeToggle() {
-  const { setTheme } = useTheme();
+  const { setTheme, resolvedTheme } = useTheme();
 
   return (
     <DropdownMenu>
@@ -26,15 +26,17 @@ export function ModeToggle() {
         }
       />
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => setTheme("light")}>
-          Light
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("dark")}>
-          Dark
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("system")}>
-          System
-        </DropdownMenuItem>
+        <div className="flex items-center justify-between gap-4 px-2 py-1.5 text-sm">
+          <span className="flex items-center gap-2">
+            <SunIcon className="size-4 dark:hidden" />
+            <MoonIcon className="hidden size-4 dark:block" />
+            Dark mode
+          </span>
+          <Switch
+            checked={resolvedTheme === "dark"}
+            onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
+          />
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );

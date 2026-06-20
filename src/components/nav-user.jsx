@@ -57,15 +57,10 @@ export function NavUser({ user }) {
               </DropdownMenuLabel>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <form action={signout}>
-              <DropdownMenuItem
-                variant="destructive"
-                render={<button type="submit" className="w-full" />}
-              >
-                <LogOutIcon />
-                Sign out
-              </DropdownMenuItem>
-            </form>
+            <DropdownMenuItem variant="destructive" onClick={() => signout()}>
+              <LogOutIcon />
+              Sign out
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
