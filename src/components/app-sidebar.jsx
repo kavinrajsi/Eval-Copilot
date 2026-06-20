@@ -2,7 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { GalleryVerticalEndIcon, LayoutDashboardIcon } from "lucide-react";
+import {
+  GalleryVerticalEndIcon,
+  LayoutDashboardIcon,
+  PlusIcon,
+} from "lucide-react";
 
 import { NavUser } from "@/components/nav-user";
 import {
@@ -57,6 +61,16 @@ export function AppSidebar({ user, features = [], ...props }) {
                 >
                   <LayoutDashboardIcon />
                   <span>Dashboard</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={pathname === "/dashboard/new"}
+                  tooltip="New feature"
+                  render={<Link href="/dashboard/new" />}
+                >
+                  <PlusIcon />
+                  <span>New feature</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

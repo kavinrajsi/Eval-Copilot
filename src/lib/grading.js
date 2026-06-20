@@ -132,17 +132,32 @@ export function validateRules(rules = []) {
 /**
  * AI assist — SUGGEST ONLY. Never sets the final verdict.
  *
- * Returns a hint for a human to review. When no provider is configured it
- * returns a deterministic heuristic so the whole app runs with zero API keys.
- * The shape is intentionally NOT {verdict}: this function cannot pass or fail.
+ * Returns a hint for a human to review. Uses Claude when ANTHROPIC_API_KEY is
+ * configured, and falls back to a deterministic heuristic so the whole app
+ * still runs with zero API keys. The shape is intentionally NOT {verdict}:
+ * this function cannot pass or fail.
  *
  * @returns {Promise<{decided_by: 'llm_suggested', note: string}>}
  */
 export async function suggestPossibleFailure(actual, knownGood) {
-  const text = actual ?? "";
-  const good = knownGood ?? "";
+  const text = String(actual ?? "");
+  const good = String(knownGood ?? "");
 
-  // Heuristic fallback (no key required). A real provider can replace this.
+  // Prefer a real model when configured. The Claude call lives in a separate
+  // server-only module loaded lazily here, so the SDK never reaches the client
+  // bundle (grading.js is also imported by a Client Component). Any provider or
+  // network error falls through to the heuristic below.
+  if (process.env.ANTHROPIC_API_KEY) {
+    try {
+      const { suggestViaClaude } = await import("./grading-claude.js");
+      const note = await suggestViaClaude(text, good);
+      if (note) return { decided_by: "llm_suggested", note };
+    } catch (err) {
+      console.error("Claude suggestion failed; using heuristic:", err?.message);
+    }
+  }
+
+  // Heuristic fallback (no key required).
   const hints = [];
   if (good && text && lengthRatio(text, good) > 1.5) {
     hints.push("Output is noticeably longer than the known-good — check for padding or repetition.");

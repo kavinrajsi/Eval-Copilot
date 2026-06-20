@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
@@ -65,7 +66,11 @@ export function FeaturesTable({ rows = [] }) {
             ) : (
               <TableRow>
                 <TableCell colSpan={5} className="text-muted-foreground text-center">
-                  No features yet — create one to get started.
+                  No features yet —{" "}
+                  <Link href="/dashboard/new" className="underline underline-offset-4">
+                    create one to get started
+                  </Link>
+                  .
                 </TableCell>
               </TableRow>
             )}

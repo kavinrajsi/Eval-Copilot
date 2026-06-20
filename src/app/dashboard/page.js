@@ -1,10 +1,11 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import NewFeatureForm from "@/app/dashboard/new-feature-form";
 import { EvalChart } from "@/components/eval-chart";
 import { FeaturesTable } from "@/components/features-table";
 import { SectionCards } from "@/components/section-cards";
 import { SiteHeader } from "@/components/site-header";
+import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 
 function rate(pass, total) {
@@ -89,7 +90,9 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <SiteHeader title="Dashboard" />
+      <SiteHeader title="Dashboard">
+        <Button render={<Link href="/dashboard/new" />}>New feature</Button>
+      </SiteHeader>
       <div className="flex flex-col gap-6 p-4 md:p-6">
         <SectionCards
           totalFeatures={featureList.length}
@@ -99,7 +102,6 @@ export default async function DashboardPage() {
         />
         <EvalChart data={chartData} />
         <FeaturesTable rows={rows} />
-        <NewFeatureForm />
       </div>
     </>
   );
