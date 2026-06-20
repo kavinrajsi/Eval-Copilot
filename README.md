@@ -8,6 +8,8 @@ A builder describes their AI feature and hands over a few example inputs. Eval C
 
 Not a benchmark. Not a dashboard of green checkmarks. A list of the places your own AI is wrong.
 
+> **New here?** See the [step-by-step guide](./doc/getting-started.md), or just sign in — a spotlight walkthrough runs automatically on your first visit (replay it anytime from the **Walkthrough** button).
+
 ## Why this exists
 
 "It works on the things I tried" is worthless as a signal. You chose those inputs because you already knew they'd pass — a signal you hand-selected to be positive is a mirror, not an instrument. An LLM will produce plausible output on anything, forever, so "it ran" stopped meaning "it is good" the moment a model went into the middle of the app.

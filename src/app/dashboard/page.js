@@ -5,8 +5,10 @@ import { EvalChart } from "@/components/eval-chart";
 import { FeaturesTable } from "@/components/features-table";
 import { SectionCards } from "@/components/section-cards";
 import { SiteHeader } from "@/components/site-header";
+import { Walkthrough } from "@/components/walkthrough";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
+import { dashboardTour } from "@/lib/tours";
 
 function rate(pass, total) {
   return total ? Math.round((pass / total) * 100) : null;
@@ -91,17 +93,26 @@ export default async function DashboardPage() {
   return (
     <>
       <SiteHeader title="Dashboard">
-        <Button render={<Link href="/dashboard/new" />}>New feature</Button>
+        <Walkthrough steps={dashboardTour} storageKey="ec-tour-dashboard-v1" />
+        <Button data-tour="new-feature" render={<Link href="/dashboard/new" />}>
+          New feature
+        </Button>
       </SiteHeader>
       <div className="flex flex-col gap-6 p-4 md:p-6">
-        <SectionCards
-          totalFeatures={featureList.length}
-          totalCases={caseList.length}
-          totalRuns={runList.length}
-          passRate={passRate}
-        />
-        <EvalChart data={chartData} />
-        <FeaturesTable rows={rows} />
+        <div data-tour="kpis">
+          <SectionCards
+            totalFeatures={featureList.length}
+            totalCases={caseList.length}
+            totalRuns={runList.length}
+            passRate={passRate}
+          />
+        </div>
+        <div data-tour="chart">
+          <EvalChart data={chartData} />
+        </div>
+        <div data-tour="features">
+          <FeaturesTable rows={rows} />
+        </div>
       </div>
     </>
   );

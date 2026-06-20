@@ -2,8 +2,10 @@ import { notFound, redirect } from "next/navigation";
 
 import FeatureWorkspace from "@/app/dashboard/[featureId]/feature-workspace";
 import { SiteHeader } from "@/components/site-header";
+import { Walkthrough } from "@/components/walkthrough";
 import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/server";
+import { workspaceTour } from "@/lib/tours";
 
 export default async function FeaturePage({ params }) {
   const { featureId } = await params;
@@ -28,6 +30,7 @@ export default async function FeaturePage({ params }) {
         {feature.feature_type ? (
           <Badge variant="secondary">{feature.feature_type}</Badge>
         ) : null}
+        <Walkthrough steps={workspaceTour} storageKey="ec-tour-workspace-v1" />
       </SiteHeader>
       <div className="p-4 md:p-6">
         <FeatureWorkspace featureId={feature.id} />

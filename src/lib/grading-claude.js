@@ -7,6 +7,10 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 
+// Lightweight, high-frequency assist (runs per golden case), so default to the
+// fast/cheap Haiku tier. Override to "claude-sonnet-4-5" for sharper judgment.
+const MODEL = process.env.ANTHROPIC_SUGGEST_MODEL || "claude-haiku-4-5";
+
 const SYSTEM = `You are a meticulous QA reviewer assisting a human grader of AI feature outputs.
 
 You NEVER give a final pass/fail verdict — a human decides that. Your only job is to flag concrete, likely problems for that human to confirm.
@@ -29,7 +33,7 @@ export async function suggestViaClaude(actual, knownGood) {
   const client = new Anthropic();
 
   const response = await client.messages.create({
-    model: "claude-opus-4-8",
+    model: MODEL,
     max_tokens: 512,
     system: SYSTEM,
     messages: [
